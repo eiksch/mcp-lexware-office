@@ -161,7 +161,7 @@ server.tool(
 			.describe(
 				'if set to true filters contacts that have the role vendor, if set to false filters contacts that do not have the vendor role',
 			),
-		page: z.number().min(0).optional().default(0).describe('page number to retrieve; starts at 0'),
+		page: z.number().min(0).optional().describe('page number to retrieve; starts at 0; mutually exclusive with fetchAll'),
 		size: z
 			.number()
 			.min(1)
@@ -170,13 +170,15 @@ server.tool(
 			.default(250)
 			.describe('number of contacts to retrieve per page'),
 	},
-	async ({ email, name, number, customer, vendor }) => {
+	async ({ email, name, number, customer, vendor, page, size }) => {
 		const params = new URLSearchParams();
 		if (email) params.append('email', email);
 		if (name) params.append('name', name);
 		if (number) params.append('number', number.toString());
 		if (customer !== undefined) params.append('customer', customer.toString());
 		if (vendor !== undefined) params.append('vendor', vendor.toString());
+		if (page !== undefined) params.append('page', page.toString());
+		params.append('size', size.toString());
 
 		const contactsUrl = `/v1/contacts?${params.toString()}`;
 		const contactsData = await makeLexwareOfficeRequest<any>(contactsUrl);
