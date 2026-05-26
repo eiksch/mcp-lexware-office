@@ -7,7 +7,7 @@ if (!LEXWARE_OFFICE_API_KEY) {
 }
 
 const LEXOFFICE_API_BASE = 'https://api.lexware.io';
-const USER_AGENT = 'mcp-lexware-office/1.3.0';
+const USER_AGENT = 'mcp-lexware-office/1.5.0';
 
 export async function makeLexwareOfficeRequest<T>(path: string): Promise<T | null> {
 	const url = `${LEXOFFICE_API_BASE}${path}`;
