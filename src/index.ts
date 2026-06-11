@@ -603,6 +603,12 @@ server.tool(
 		let body: unknown;
 		try { body = await response.json(); } catch { body = null; }
 
+		if (response.status === 406) {
+			return {
+				content: [{ type: 'text', text: "Keine Zahlungsinformationen verfügbar — Beleg hat Status 'unchecked'. Zahlungen werden intern von Lexware gesetzt (nach manueller Eingabe oder Bank-Matching)." }],
+			};
+		}
+
 		if (!response.ok) {
 			return {
 				content: [{ type: 'text', text: `API error ${response.status}: ${JSON.stringify(body)}` }],
@@ -643,8 +649,8 @@ server.tool(
 	'create-contact',
 	'Create a new contact in Lexware Office. For company contacts: provide companyName and optionally contactPersons (max. 1) with emailAddress. For person contacts: provide firstName/lastName. Supports billing/shipping address, email addresses (business/office/private/other), and phone numbers. Set customer and/or vendor to true. API limit: max. one entry per email/phone list, max. one contactPerson.',
 	{
-		customer: z.string().optional().transform(v => v === 'true').describe('Set to "true" to assign the customer role'),
-		vendor: z.string().optional().transform(v => v === 'true').describe('Set to "true" to assign the vendor role'),
+		customer: z.boolean().optional().describe('Set to true to assign the customer role'),
+		vendor: z.boolean().optional().describe('Set to true to assign the vendor role'),
 		companyName: z.string().optional().describe('Company name — provide either companyName or lastName, not both'),
 		taxNumber: z.string().optional().describe('Tax number of the company'),
 		vatRegistrationId: z.string().optional().describe('VAT registration ID of the company'),
@@ -781,8 +787,8 @@ server.tool(
 	{
 		id: z.string().uuid().describe('The ID of the contact to update'),
 		version: z.number().int().describe('Current version of the contact (for optimistic locking)'),
-		customer: z.string().optional().transform(v => v === 'true').describe('Set to "true" to assign the customer role'),
-		vendor: z.string().optional().transform(v => v === 'true').describe('Set to "true" to assign the vendor role'),
+		customer: z.boolean().optional().describe('Set to true to assign the customer role'),
+		vendor: z.boolean().optional().describe('Set to true to assign the vendor role'),
 		companyName: z.string().optional().describe('Company name'),
 		taxNumber: z.string().optional().describe('Tax number of the company'),
 		vatRegistrationId: z.string().optional().describe('VAT registration ID of the company'),
@@ -836,7 +842,7 @@ server.tool(
 	}) => {
 		if (!customer && !vendor) {
 			return {
-				content: [{ type: 'text', text: 'Error: Lexoffice requires at least one role. Set customer or vendor to "true".' }],
+				content: [{ type: 'text', text: 'Error: Lexoffice requires at least one role. Set customer or vendor to true.' }],
 			};
 		}
 
