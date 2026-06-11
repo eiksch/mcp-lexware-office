@@ -1204,7 +1204,7 @@ server.tool(
 
 server.tool(
 	'create-voucher',
-	'Create a new bookkeeping voucher (Buchungsbeleg) in Lexware Office, e.g. an incoming invoice (Eingangsrechnung). Use list-posting-categories to find valid categoryId values.',
+	'Create a new bookkeeping voucher (Buchungsbeleg) in Lexware Office. Set voucherStatus: "open" to finalize immediately; omit for unchecked (default). Use list-posting-categories for valid categoryId values. §13b Reverse Charge (Drittland/non-EU supplier): use taxType: "vatfree", taxRatePercent: 19, taxAmount: 0 — §13b-specific posting categories (splitAllowed: false) have undocumented validation rules and may reject; use a standard equivalent category until confirmed.',
 	{
 		type: z
 			.enum(['purchaseinvoice', 'purchasecreditnote', 'salesinvoice', 'salescreditnote'])
@@ -1232,6 +1232,7 @@ server.tool(
 				}),
 			)
 			.min(1),
+		voucherStatus: z.enum(['unchecked', 'open']).optional().describe("Set the voucher status. 'open' finalizes immediately. Omit to create as 'unchecked'."),
 	},
 	async (params) => {
 		const totalGrossAmount = params.voucherItems.reduce((sum, item) => sum + item.amount, 0);
@@ -1259,7 +1260,7 @@ server.tool(
 
 server.tool(
 	'update-voucher',
-	'Update an existing bookkeeping voucher in Lexware Office. Requires the current version number (get it from get-voucher-details). All fields from create-voucher are required. Warning: this operation clears all file attachments. If the voucher has files, re-attach them afterwards using upload-file-to-voucher.',
+	'Update an existing bookkeeping voucher in Lexware Office. Requires the current version number (get it from get-voucher-details). Set voucherStatus: "open" to finalize (unchecked → open). File attachments are preserved automatically. §13b Reverse Charge (Drittland/non-EU supplier): use taxType: "vatfree", taxRatePercent: 19, taxAmount: 0 — §13b-specific posting categories (splitAllowed: false) have undocumented validation rules and may reject; use a standard equivalent category until confirmed.',
 	{
 		id: z.string().uuid().describe('The ID of the voucher to update'),
 		version: z.number().int().describe('Current version of the voucher (for optimistic locking)'),
@@ -1280,6 +1281,7 @@ server.tool(
 				}),
 			)
 			.min(1),
+		voucherStatus: z.enum(['unchecked', 'open']).optional().describe("Set the voucher status. 'open' finalizes the voucher (unchecked → open)."),
 	},
 	async ({ id, ...body }) => {
 		const totalGrossAmount = body.voucherItems.reduce((sum, item) => sum + item.amount, 0);
