@@ -361,7 +361,7 @@ server.tool(
 
 server.tool(
 	'get-vouchers',
-	'Get a list of bookkeeping vouchers (Eingangsbelege/Ausgangsbelege) from Lexware Office. These are invoices/receipts that were created externally and imported into Lexware Office for bookkeeping — NOT natively created invoices (use get-invoices for those). Voucher types: purchaseinvoice (Eingangsrechnung/Ausgaben), purchasecreditnote (Eingangsgutschrift), salesinvoice (Ausgangsrechnung/Einnahmen — externally created), salescreditnote (Ausgangsgutschrift). To find open customer receivables from externally created invoices, use voucherType=salesinvoice with voucherStatus=open. For a complete receivables picture across both sources, use get-open-receivables.',
+	'Get a list of bookkeeping vouchers (Eingangsbelege/Ausgangsbelege) from Lexware Office. These are invoices/receipts that were created externally and imported into Lexware Office for bookkeeping — NOT natively created invoices (use get-invoices for those). Voucher types: purchaseinvoice (Eingangsrechnung/Ausgaben), purchasecreditnote (Eingangsgutschrift), salesinvoice (Ausgangsrechnung/Einnahmen — externally created), salescreditnote (Ausgangsgutschrift). To find open customer receivables from externally created invoices, use voucherType=salesinvoice with voucherStatus=open. For a complete receivables picture across both sources, use get-open-receivables. For direct lookup by invoice number, use the voucherNumber parameter instead of loading all vouchers.',
 	{
 		voucherType: z
 			.array(
@@ -377,6 +377,10 @@ server.tool(
 			.optional()
 			.default(['unchecked', 'open', 'paid', 'paidoff', 'voided', 'transferred', 'sepadebit'])
 			.describe('Filter by voucher status'),
+		voucherNumber: z
+			.string()
+			.optional()
+			.describe('Filter by voucher number (e.g. "EK-2025-0001"). Use for direct lookup — avoids loading all vouchers. Match semantics (exact vs. partial) depend on Lexware API.'),
 		contactId: z
 			.string()
 			.uuid()
@@ -388,12 +392,13 @@ server.tool(
 			.min(1)
 			.max(250)
 			.optional()
-			.default(250)
+			.default(50)
 			.describe('number of vouchers to retrieve per page'),
 	},
-	async ({ voucherType, voucherStatus, contactId, page, size }) => {
+	async ({ voucherType, voucherStatus, contactId, voucherNumber, page, size }) => {
 		let voucherlistUrl = `/v1/voucherlist?voucherType=${voucherType.join(',')}&voucherStatus=${voucherStatus.join(',')}&page=${page}&size=${size}`;
 		if (contactId) voucherlistUrl += `&contactId=${contactId}`;
+		if (voucherNumber) voucherlistUrl += `&voucherNumber=${encodeURIComponent(voucherNumber)}`;
 		const voucherlistData = await makeLexwareOfficeRequest<any>(voucherlistUrl);
 		const vouchers = voucherlistData?.content;
 
