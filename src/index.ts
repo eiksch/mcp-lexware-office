@@ -59,8 +59,8 @@ server.tool(
 			.default(250)
 			.describe('number of invoices to retrieve per page'),
 	},
-	async ({ status, contactId }) => {
-		let voucherlistUrl = `/v1/voucherlist?voucherType=invoice&voucherStatus=${status.join(',')}`;
+	async ({ status, contactId, page, size }) => {
+		let voucherlistUrl = `/v1/voucherlist?voucherType=invoice&voucherStatus=${status.join(',')}&page=${page}&size=${size}`;
 		if (contactId) voucherlistUrl += `&contactId=${contactId}`;
 		const voucherlistData = await makeLexwareOfficeRequest<any>(voucherlistUrl);
 		const vouchers = voucherlistData.content;
