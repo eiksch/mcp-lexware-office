@@ -16,16 +16,21 @@
 	"bugs": "https://github.com/JannikWempe/mcp-lexware-office/issues",
 	"type": "module",
 	"bin": {
-		"lexware-office": "./build/index.js"
+		"lexware-office": "./build/index.js",
+		"lexware-office-v2": "./build/v2/index.js"
 	},
 	"files": [
 		"build"
 	],
 	"scripts": {
-		"build": "tsc && shx chmod +x build/*.js"
+		"build": "shx rm -rf build && tsc && shx chmod +x build/*.js build/v2/*.js",
+		"prepare": "npm run build",
+		"typecheck": "tsc --noEmit",
+		"test": "npm run build && node --test build/v2/*.test.js"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.7.0",
+		"quickjs-emscripten": "0.32.0",
 		"zod": "^3.24.2"
 	},
 	"devDependencies": {
