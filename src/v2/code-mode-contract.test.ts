@@ -106,20 +106,53 @@ test('absolute URLs, protocol-relative URLs, and /v1 escapes are rejected before
 	assert.equal(calls.length, 0);
 });
 
-test('writes do not need per-call allowWrite but honor process-wide read-only mode', async () => {
+test('v2 is read-only by default: writes blocked without ALLOW_WRITES=true', async () => {
 	const originalReadOnly = process.env.LEXWARE_OFFICE_READ_ONLY;
 	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
 	try {
 		delete process.env.LEXWARE_OFFICE_READ_ONLY;
 		delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		const { client } = clientWithCalls(async () => responseFor(204, null, {}, 'No Content'));
+
+		// Default: writes are blocked.
+		await assert.rejects(() => client.request({ method: 'PATCH', path: '/v1/custom-resource/123', body: { archived: true } }), /read-only by default/);
+		await assert.rejects(() => client.request({ method: 'POST', path: '/v1/contacts', body: {} }), /read-only by default/);
+	} finally {
+		if (originalReadOnly === undefined) delete process.env.LEXWARE_OFFICE_READ_ONLY;
+		else process.env.LEXWARE_OFFICE_READ_ONLY = originalReadOnly;
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
+
+test('ALLOW_WRITES=true enables writes when READ_ONLY is not set', async () => {
+	const originalReadOnly = process.env.LEXWARE_OFFICE_READ_ONLY;
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	try {
+		delete process.env.LEXWARE_OFFICE_READ_ONLY;
+		process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
 		const { client, calls } = clientWithCalls(async () => responseFor(204, null, {}, 'No Content'));
 
 		const response = await client.request({ method: 'PATCH', path: '/v1/custom-resource/123', body: { archived: true } });
 		assert.equal(response.status, 204);
 		assert.equal(calls[0]?.init?.method, 'PATCH');
+	} finally {
+		if (originalReadOnly === undefined) delete process.env.LEXWARE_OFFICE_READ_ONLY;
+		else process.env.LEXWARE_OFFICE_READ_ONLY = originalReadOnly;
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
 
+test('READ_ONLY=true blocks writes even when ALLOW_WRITES=true', async () => {
+	const originalReadOnly = process.env.LEXWARE_OFFICE_READ_ONLY;
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	try {
 		process.env.LEXWARE_OFFICE_READ_ONLY = 'true';
-		await assert.rejects(() => client.request({ method: 'POST', path: '/v1/contacts', body: {} }), /blocked by LEXWARE_OFFICE_READ_ONLY/);
+		process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+		const { client } = clientWithCalls(async () => responseFor(204, null, {}, 'No Content'));
+
+		await assert.rejects(() => client.request({ method: 'POST', path: '/v1/contacts', body: {} }), /read-only by default/);
 	} finally {
 		if (originalReadOnly === undefined) delete process.env.LEXWARE_OFFICE_READ_ONLY;
 		else process.env.LEXWARE_OFFICE_READ_ONLY = originalReadOnly;
@@ -129,20 +162,179 @@ test('writes do not need per-call allowWrite but honor process-wide read-only mo
 });
 
 test('JSON, custom content type, and raw body serialization are supported', async () => {
-	const { client, calls } = clientWithCalls(async () => responseFor(200, JSON.stringify({ received: true }), { 'content-type': 'application/json' }, 'OK'));
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+	try {
+		const { client, calls } = clientWithCalls(async () => responseFor(200, JSON.stringify({ received: true }), { 'content-type': 'application/json' }, 'OK'));
 
-	await client.request({ method: 'POST', path: '/v1/contacts', contentType: 'application/vnd.lexware+json', body: { name: 'Ada' } });
-	assert.equal((calls[0]?.init?.headers as Record<string, string>)['Content-Type'], 'application/vnd.lexware+json');
-	assert.equal(calls[0]?.init?.body, JSON.stringify({ name: 'Ada' }));
+		await client.request({ method: 'POST', path: '/v1/contacts', contentType: 'application/vnd.lexware+json', body: { name: 'Ada' } });
+		assert.equal((calls[0]?.init?.headers as Record<string, string>)['Content-Type'], 'application/vnd.lexware+json');
+		assert.equal(calls[0]?.init?.body, JSON.stringify({ name: 'Ada' }));
 
-	const multipart = '--boundary\r\nContent-Disposition: form-data; name="file"; filename="a.txt"\r\n\r\nhello\r\n--boundary\r\nContent-Disposition: form-data; name="type"\r\n\r\nvoucher\r\n--boundary--\r\n';
-	await client.request({ method: 'POST', path: '/v1/files', contentType: 'multipart/form-data; boundary=boundary', rawBody: true, body: multipart });
-	assert.equal((calls[1]?.init?.headers as Record<string, string>)['Content-Type'], 'multipart/form-data; boundary=boundary');
-	assert.equal(calls[1]?.init?.body, multipart);
-	// type=voucher must be a multipart form field, not a query parameter
-	assert.match(calls[1]?.init?.body as string, /Content-Disposition: form-data; name="file"; filename="[^"]+"/);
-	assert.match(calls[1]?.init?.body as string, /Content-Disposition: form-data; name="type"/);
-	assert.match(calls[1]?.init?.body as string, /\r\nvoucher\r\n/);
+		const multipart = '--boundary\r\nContent-Disposition: form-data; name="file"; filename="a.txt"\r\n\r\nhello\r\n--boundary\r\nContent-Disposition: form-data; name="type"\r\n\r\nvoucher\r\n--boundary--\r\n';
+		await client.request({ method: 'POST', path: '/v1/files', contentType: 'multipart/form-data; boundary=boundary', rawBody: true, body: multipart });
+		assert.equal((calls[1]?.init?.headers as Record<string, string>)['Content-Type'], 'multipart/form-data; boundary=boundary');
+		assert.equal(calls[1]?.init?.body, multipart);
+		// type=voucher must be a multipart form field, not a query parameter
+		assert.match(calls[1]?.init?.body as string, /Content-Disposition: form-data; name="file"; filename="[^"]+"/);
+		assert.match(calls[1]?.init?.body as string, /Content-Disposition: form-data; name="type"/);
+		assert.match(calls[1]?.init?.body as string, /\r\nvoucher\r\n/);
+	} finally {
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
+
+test('bodyBase64 is decoded to binary Buffer and sent with correct Content-Type', async () => {
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+	try {
+		const receivedBodies: BodyInit[] = [];
+		const { client } = clientWithCalls(async (_input, init) => {
+			if (init?.body !== undefined) receivedBodies.push(init.body as BodyInit);
+			return responseFor(200, JSON.stringify({ ok: true }), { 'content-type': 'application/json' }, 'OK');
+		});
+
+		// 3 bytes: 0x01 0x02 0x03 → base64 "AQID"
+		await client.request({
+			method: 'POST',
+			path: '/v1/files',
+			bodyBase64: 'AQID',
+			contentType: 'application/pdf',
+		});
+
+		assert.equal(receivedBodies.length, 1);
+		assert.ok(receivedBodies[0] instanceof Buffer, 'body must be a Buffer, not a string');
+		assert.deepEqual(Array.from(receivedBodies[0] as Buffer), [0x01, 0x02, 0x03]);
+	} finally {
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
+
+test('bodyBase64 defaults Content-Type to application/octet-stream when not specified', async () => {
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+	try {
+		const { client, calls } = clientWithCalls(async () => responseFor(200, JSON.stringify({ ok: true }), { 'content-type': 'application/json' }, 'OK'));
+
+		await client.request({ method: 'POST', path: '/v1/files', bodyBase64: 'AQID' });
+
+		assert.equal((calls[0]?.init?.headers as Record<string, string>)['Content-Type'], 'application/octet-stream');
+	} finally {
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
+
+test('multipart with contentBase64 decodes binary part to Blob in FormData', async () => {
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+	try {
+		const receivedBodies: BodyInit[] = [];
+		const { client } = clientWithCalls(async (_input, init) => {
+			if (init?.body !== undefined) receivedBodies.push(init.body as BodyInit);
+			return responseFor(200, JSON.stringify({ id: 'file-id' }), { 'content-type': 'application/json' }, 'OK');
+		});
+
+		// 3 bytes: 0x01 0x02 0x03 → base64 "AQID"
+		await client.request({
+			method: 'POST',
+			path: '/v1/files',
+			multipart: [
+				{ name: 'file', filename: 'receipt.pdf', contentType: 'application/pdf', contentBase64: 'AQID' },
+				{ name: 'type', value: 'voucher' },
+			],
+		});
+
+		assert.equal(receivedBodies.length, 1);
+		assert.ok(receivedBodies[0] instanceof FormData, 'body must be FormData for multipart uploads');
+
+		const formData = receivedBodies[0] as FormData;
+		const fileEntry = formData.get('file');
+		const typeEntry = formData.get('type');
+
+		assert.ok(fileEntry instanceof Blob, 'binary multipart part must be a Blob');
+		assert.equal((fileEntry as Blob).type, 'application/pdf');
+		assert.equal(typeEntry, 'voucher');
+
+		const fileBytes = new Uint8Array(await (fileEntry as Blob).arrayBuffer());
+		assert.deepEqual(Array.from(fileBytes), [0x01, 0x02, 0x03]);
+	} finally {
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
+
+test('multipart with only string value parts sends FormData without binary blobs', async () => {
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+	try {
+		const receivedBodies: BodyInit[] = [];
+		const { client } = clientWithCalls(async (_input, init) => {
+			if (init?.body !== undefined) receivedBodies.push(init.body as BodyInit);
+			return responseFor(200, JSON.stringify({ id: 'file-id' }), { 'content-type': 'application/json' }, 'OK');
+		});
+
+		await client.request({
+			method: 'POST',
+			path: '/v1/files',
+			multipart: [
+				{ name: 'type', value: 'voucher' },
+				{ name: 'note', value: 'test upload' },
+			],
+		});
+
+		assert.equal(receivedBodies.length, 1);
+		assert.ok(receivedBodies[0] instanceof FormData, 'body must be FormData');
+		const formData = receivedBodies[0] as FormData;
+		assert.equal(formData.get('type'), 'voucher');
+		assert.equal(formData.get('note'), 'test upload');
+	} finally {
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
+
+test('bodyBase64 and body/multipart are mutually exclusive', async () => {
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+	try {
+		const { client } = clientWithCalls(async () => responseFor(200, '{}'));
+
+		await assert.rejects(
+			() => client.request({ method: 'POST', path: '/v1/files', bodyBase64: 'AQID', body: { x: 1 } }),
+			/At most one of body, bodyBase64, or multipart may be set/,
+		);
+		await assert.rejects(
+			() => client.request({ method: 'POST', path: '/v1/files', bodyBase64: 'AQID', multipart: [{ name: 'type', value: 'voucher' }] }),
+			/At most one of body, bodyBase64, or multipart may be set/,
+		);
+	} finally {
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
+});
+
+test('invalid base64 in bodyBase64 or contentBase64 is rejected before fetch', async () => {
+	const originalAllowWrites = process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+	process.env.LEXWARE_OFFICE_ALLOW_WRITES = 'true';
+	try {
+		const { client, calls } = clientWithCalls(async () => responseFor(200, '{}'));
+
+		await assert.rejects(
+			() => client.request({ method: 'POST', path: '/v1/files', bodyBase64: 'not!valid@base64#' }),
+			/bodyBase64 must be a valid base64/,
+		);
+		await assert.rejects(
+			() => client.request({ method: 'POST', path: '/v1/files', multipart: [{ name: 'file', filename: 'f.pdf', contentBase64: '!!!' }] }),
+			/contentBase64 must be a valid base64/,
+		);
+		assert.equal(calls.length, 0);
+	} finally {
+		if (originalAllowWrites === undefined) delete process.env.LEXWARE_OFFICE_ALLOW_WRITES;
+		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
+	}
 });
 
 test('large JSON responses stay parsed so execute code can summarize them', async () => {

@@ -6,11 +6,21 @@ export type LexwareExecuteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 type QueryScalar = string | number | boolean;
 type QueryValue = QueryScalar | QueryScalar[] | null | undefined;
 
+export interface MultipartPart {
+	name: string;
+	value?: string;
+	filename?: string;
+	contentType?: string;
+	contentBase64?: string;
+}
+
 export interface LexwareRequestInput {
 	method?: LexwareExecuteMethod | Lowercase<LexwareExecuteMethod>;
 	path: string;
 	query?: Record<string, QueryValue>;
 	body?: unknown;
+	bodyBase64?: string;
+	multipart?: MultipartPart[];
 	contentType?: string;
 	rawBody?: boolean;
 	accept?: string;
@@ -62,6 +72,8 @@ interface NormalizedRequest {
 	path: string;
 	query: URLSearchParams;
 	body?: unknown;
+	bodyBase64?: string;
+	multipart?: MultipartPart[];
 	contentType?: string;
 	rawBody: boolean;
 	accept: string;
@@ -104,7 +116,7 @@ export class LexwareApiClient {
 
 		const normalized = normalizeRequest(input);
 		if (WRITE_METHODS.has(normalized.method) && writesAreGloballyDisabled()) {
-			throw new Error(`${normalized.method} ${normalized.path} is blocked by LEXWARE_OFFICE_READ_ONLY/LEXWARE_OFFICE_ALLOW_WRITES configuration.`);
+			throw new Error(`${normalized.method} ${normalized.path} is blocked: v2 is read-only by default. Set LEXWARE_OFFICE_ALLOW_WRITES=true to enable writes (LEXWARE_OFFICE_READ_ONLY=true overrides this).`);
 		}
 
 		await this.waitForRateLimitTurn();
@@ -179,9 +191,30 @@ function normalizeRequest(input: unknown): NormalizedRequest {
 		throw new Error('GET requests must not include a body');
 	}
 
+	if (method === 'GET' && request.bodyBase64 !== undefined) {
+		throw new Error('GET requests must not include a body');
+	}
+
+	if (method === 'GET' && request.multipart !== undefined) {
+		throw new Error('GET requests must not include a body');
+	}
+
 	if (rawBody && request.body !== undefined && typeof request.body !== 'string') {
 		throw new Error('rawBody=true requires body to be a string. Encode binary/multipart payloads as a string with an explicit contentType boundary.');
 	}
+
+	// Mutual exclusion: bodyBase64, multipart, and body/rawBody are distinct modes.
+	const bodyModesSet = [
+		request.body !== undefined,
+		request.bodyBase64 !== undefined,
+		request.multipart !== undefined,
+	].filter(Boolean).length;
+	if (bodyModesSet > 1) {
+		throw new Error('At most one of body, bodyBase64, or multipart may be set on a single request.');
+	}
+
+	const bodyBase64 = request.bodyBase64 === undefined ? undefined : normalizeBase64Field(request.bodyBase64, 'bodyBase64');
+	const multipart = request.multipart === undefined ? undefined : normalizeMultipart(request.multipart);
 
 	const query = new URLSearchParams(url.search);
 	appendQueryObject(query, request.query);
@@ -191,6 +224,8 @@ function normalizeRequest(input: unknown): NormalizedRequest {
 		path: url.pathname,
 		query,
 		body: request.body,
+		bodyBase64,
+		multipart,
 		contentType,
 		rawBody,
 		accept,
@@ -225,6 +260,53 @@ function normalizeHeaderValue(value: unknown, field: string): string {
 	if (/\r|\n/.test(value)) throw new Error(`${field} must not contain newlines`);
 	if (value.length > 500) throw new Error(`${field} is too long`);
 	return value.trim();
+}
+
+function normalizeBase64Field(value: unknown, field: string): string {
+	if (typeof value !== 'string') throw new Error(`${field} must be a string`);
+	// Validate that it is base64 (standard or URL-safe alphabet, with optional padding).
+	if (!/^[A-Za-z0-9+/\-_]*={0,2}$/.test(value)) {
+		throw new Error(`${field} must be a valid base64-encoded string`);
+	}
+	return value;
+}
+
+function normalizeMultipart(parts: unknown): MultipartPart[] {
+	if (!Array.isArray(parts)) throw new Error('multipart must be an array');
+	return parts.map((part, index) => {
+		if (!part || typeof part !== 'object' || Array.isArray(part)) {
+			throw new Error(`multipart[${index}] must be an object`);
+		}
+		const p = part as Record<string, unknown>;
+		if (typeof p.name !== 'string' || p.name.trim().length === 0) {
+			throw new Error(`multipart[${index}].name must be a non-empty string`);
+		}
+		if (p.value !== undefined && typeof p.value !== 'string') {
+			throw new Error(`multipart[${index}].value must be a string when provided`);
+		}
+		if (p.filename !== undefined && typeof p.filename !== 'string') {
+			throw new Error(`multipart[${index}].filename must be a string when provided`);
+		}
+		if (p.contentType !== undefined && typeof p.contentType !== 'string') {
+			throw new Error(`multipart[${index}].contentType must be a string when provided`);
+		}
+		if (p.contentBase64 !== undefined) {
+			normalizeBase64Field(p.contentBase64, `multipart[${index}].contentBase64`);
+		}
+		if (p.value === undefined && p.contentBase64 === undefined) {
+			throw new Error(`multipart[${index}] must have either value or contentBase64`);
+		}
+		if (p.value !== undefined && p.contentBase64 !== undefined) {
+			throw new Error(`multipart[${index}] must not have both value and contentBase64`);
+		}
+		return {
+			name: p.name as string,
+			...(p.value !== undefined && { value: p.value as string }),
+			...(p.filename !== undefined && { filename: p.filename as string }),
+			...(p.contentType !== undefined && { contentType: p.contentType as string }),
+			...(p.contentBase64 !== undefined && { contentBase64: p.contentBase64 as string }),
+		};
+	});
 }
 
 function appendQueryObject(query: URLSearchParams, queryObject: unknown): void {
@@ -270,6 +352,28 @@ function escapeRegex(value: string): string {
 }
 
 function serializeRequestBody(request: NormalizedRequest, headers: Record<string, string>): BodyInit | undefined {
+	// Binary body: decode base64 on the host, send raw bytes.
+	if (request.bodyBase64 !== undefined) {
+		headers['Content-Type'] = request.contentType ?? 'application/octet-stream';
+		return Buffer.from(request.bodyBase64, 'base64');
+	}
+
+	// Multipart body: build FormData on the host with binary-safe parts.
+	if (request.multipart !== undefined) {
+		const formData = new FormData();
+		for (const part of request.multipart) {
+			if (part.contentBase64 !== undefined) {
+				const buffer = Buffer.from(part.contentBase64, 'base64');
+				const blob = new Blob([buffer], { type: part.contentType ?? 'application/octet-stream' });
+				formData.append(part.name, blob, part.filename ?? part.name);
+			} else {
+				formData.append(part.name, part.value ?? '');
+			}
+		}
+		// Do NOT set Content-Type manually; the Fetch API sets it with the correct boundary.
+		return formData;
+	}
+
 	if (request.body === undefined) return undefined;
 
 	if (request.rawBody) {
@@ -409,7 +513,10 @@ function sanitizeFetchErrorMessage(error: unknown, apiKey: string): string {
 }
 
 function writesAreGloballyDisabled(): boolean {
-	return process.env.LEXWARE_OFFICE_READ_ONLY === 'true' || process.env.LEXWARE_OFFICE_ALLOW_WRITES === 'false';
+	// Hard block: READ_ONLY wins over everything.
+	if (process.env.LEXWARE_OFFICE_READ_ONLY === 'true') return true;
+	// v2 is read-only by default. Writes require explicit opt-in.
+	return process.env.LEXWARE_OFFICE_ALLOW_WRITES !== 'true';
 }
 
 function delay(ms: number): Promise<void> {

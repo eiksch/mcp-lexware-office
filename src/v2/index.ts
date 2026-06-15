@@ -10,7 +10,7 @@ import { stringifyForMcp } from './truncate.js';
 
 const server = new McpServer({
 	name: 'lexware-office-v2',
-	version: '0.1.0',
+	version: '1.5.0',
 });
 
 const searchExecutor = new QuickJsExecutor();
@@ -126,7 +126,7 @@ type LexwareResponse<T = unknown> = {
 
 lexware.request returns all HTTP responses, including non-OK, as LexwareResponse. Check response.ok/status for recovery logic, or use lexware.json(...) / lexware.paginate(...) when you want non-OK or non-JSON responses to throw.
 
-Writes are allowed only when the user explicitly requested them, and can be disabled process-wide with LEXWARE_OFFICE_READ_ONLY=true or LEXWARE_OFFICE_ALLOW_WRITES=false.
+v2 is read-only by default. POST, PUT, PATCH, and DELETE are blocked unless the server is started with LEXWARE_OFFICE_ALLOW_WRITES=true. Setting LEXWARE_OFFICE_READ_ONLY=true is a hard block that overrides ALLOW_WRITES.
 
 Example:
 

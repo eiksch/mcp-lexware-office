@@ -97,3 +97,33 @@ test('host call that rejects after timeout: returns structured error, process st
 	assert.ok(execution.error, 'expected a timeout error, got none');
 	assert.match(execution.error, /timed out/i);
 });
+
+test('never-settling guest promise: returns timeout error and does not hang teardown', async () => {
+	// A guest promise that never resolves or rejects is the primary scenario for an
+	// indefinite teardown hang.  Before the fix, the finally block would await the
+	// sandboxNativePromise without a time bound and block forever.
+	//
+	// We enforce a wall-clock deadline on the whole test to guarantee the executor
+	// returns within a reasonable time.
+	const WALL_CLOCK_LIMIT_MS = 3_000; // generous; fix keeps teardown to ~500 ms cap
+
+	const executorPromise = new QuickJsExecutor().execute(
+		// Guest code awaits a promise that never settles.
+		`async () => await new Promise(() => {})`,
+		{ spec: {} },
+		{ timeoutMs: 200 },
+	);
+
+	const timeoutSentinel = new Promise<'wall-clock-exceeded'>((resolve) =>
+		setTimeout(() => resolve('wall-clock-exceeded'), WALL_CLOCK_LIMIT_MS),
+	);
+
+	const winner = await Promise.race([executorPromise, timeoutSentinel]);
+
+	assert.notEqual(winner, 'wall-clock-exceeded', 'executor hung: teardown did not complete within wall-clock limit');
+
+	// At this point winner is a CodeExecutionResult.
+	const result = winner as import('./executor.js').CodeExecutionResult;
+	assert.ok(result.error, 'expected a timeout error, got none');
+	assert.match(result.error, /timed out/i);
+});

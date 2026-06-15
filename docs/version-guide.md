@@ -177,6 +177,64 @@ declare const lexware: {
 };
 ```
 
+## Binary-safe file uploads in v2
+
+v2 supports two binary-safe upload modes in addition to the legacy `rawBody=true` string-based multipart.
+
+### `bodyBase64` — raw binary body
+
+Send a raw binary request body by base64-encoding it and setting `bodyBase64`. The host decodes the base64 outside the QuickJS sandbox and sends the raw bytes:
+
+```js
+async () => {
+  // pdfBytes is a base64-encoded PDF string produced by the AI or fetched externally.
+  const pdfBytes = 'JVBERi0x...'; // base64-encoded PDF
+  const response = await lexware.request({
+    method: 'POST',
+    path: '/v1/files',
+    bodyBase64: pdfBytes,
+    contentType: 'application/pdf',
+  });
+  return response.data;
+}
+```
+
+`contentType` defaults to `application/octet-stream` if not specified.
+
+### `multipart` — binary-safe FormData
+
+For multipart uploads (e.g. `/v1/files`, `/v1/vouchers/{id}/files`), pass a `multipart` array. Each part can supply either a plain string `value` or a `contentBase64` for binary content. The host decodes base64 and builds `FormData` with `Blob` parts outside the sandbox:
+
+```js
+async () => {
+  const pdfBytes = 'JVBERi0x...'; // base64-encoded PDF
+  const response = await lexware.request({
+    method: 'POST',
+    path: '/v1/files',
+    multipart: [
+      {
+        name: 'file',
+        filename: 'receipt.pdf',
+        contentType: 'application/pdf',
+        contentBase64: pdfBytes,   // decoded to binary Blob by the host
+      },
+      { name: 'type', value: 'voucher' },
+    ],
+  });
+  return response.data;
+}
+```
+
+Key constraints:
+- `body`, `bodyBase64`, and `multipart` are mutually exclusive — set at most one per request.
+- `contentBase64` and `value` are mutually exclusive within a single multipart part.
+- GET requests may not include any body mode.
+- Invalid base64 is rejected before the request is sent.
+
+### Legacy `rawBody=true`
+
+The original `rawBody=true` mode is preserved for backward compatibility. It sends a string body verbatim and is adequate for text-based multipart (e.g. manually constructed ASCII boundaries). It is **not** binary-safe for arbitrary byte sequences — use `bodyBase64` or `multipart` with `contentBase64` for true binary payloads.
+
 ## Permission models
 
 ### v1 permissions
@@ -213,7 +271,17 @@ Example v1 draft mode:
 
 ### v2 permissions
 
-v2 has one powerful `execute` tool. Because individual write operations are not separate MCP tools, disable writes process-wide for read-only setups:
+**v2 is read-only by default.** Because `execute` is a single powerful tool (not separate per-operation MCP tools), writes are blocked unless explicitly opted in.
+
+To enable writes, set:
+
+```json
+{
+  "LEXWARE_OFFICE_ALLOW_WRITES": "true"
+}
+```
+
+`LEXWARE_OFFICE_READ_ONLY=true` is a hard block that overrides `ALLOW_WRITES=true`:
 
 ```json
 {
@@ -221,20 +289,18 @@ v2 has one powerful `execute` tool. Because individual write operations are not 
 }
 ```
 
-or:
+Priority order (highest wins):
 
-```json
-{
-  "LEXWARE_OFFICE_ALLOW_WRITES": "false"
-}
-```
+1. `LEXWARE_OFFICE_READ_ONLY=true` → writes always blocked
+2. `LEXWARE_OFFICE_ALLOW_WRITES=true` → writes allowed
+3. Default (neither set) → writes blocked
 
-When either setting blocks writes, v2 rejects `POST`, `PUT`, `PATCH`, and `DELETE` requests.
+When writes are blocked, v2 rejects `POST`, `PUT`, `PATCH`, and `DELETE` requests with a clear error message.
 
 Important behavior:
 
-- Writes should only be used when the user explicitly requested a write operation.
-- Read-only mode is strongly recommended when first evaluating v2.
+- Default read-only mirrors how Cloudflare's OAuth scope template defaults to read-only; Lexware API keys have no equivalent OAuth scopes, so the MCP server provides the safety boundary.
+- Writes should only be enabled when the user explicitly needs a write operation.
 - The API key remains in the host process and is never exposed to sandboxed code.
 
 ## Migration guide
@@ -321,7 +387,7 @@ async () => {
 
   return {
     count: rows.length,
-    totalGross: lexware.formatMoney(lexware.sumMoney(rows, 'totalGrossAmount'))
+    totalAmount: lexware.formatMoney(lexware.sumMoney(rows, 'totalAmount'))
   };
 }
 ```

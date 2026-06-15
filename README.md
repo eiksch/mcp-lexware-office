@@ -64,6 +64,26 @@ async () => {
 
 The sandbox does **not** receive the Lexware API key, Node globals, filesystem access, imports, `fetch`, or arbitrary network access. `lexware.request` only accepts relative `/v1/...` paths and sends the API key from the host process.
 
+#### Binary-safe file uploads
+
+v2 supports binary-safe uploads via `bodyBase64` (raw binary body) and `multipart` with `contentBase64` (binary FormData parts). The host decodes base64 and builds `Buffer` / `Blob` bodies outside the QuickJS sandbox:
+
+```js
+async () => {
+  const pdfBytes = 'JVBERi0x...'; // base64-encoded PDF
+  return await lexware.request({
+    method: 'POST',
+    path: '/v1/files',
+    multipart: [
+      { name: 'file', filename: 'receipt.pdf', contentType: 'application/pdf', contentBase64: pdfBytes },
+      { name: 'type', value: 'voucher' },
+    ],
+  });
+}
+```
+
+See [docs/version-guide.md](docs/version-guide.md#binary-safe-file-uploads-in-v2) for details and all supported modes.
+
 ## Configuration
 
 ### Get a Lexware Office API key
@@ -154,19 +174,19 @@ Use this source-based setup only for development. End users should prefer the pa
 
 v1 safety is usually managed by disabling specific write/finalize/upload tools in the MCP client.
 
-v2 has one powerful `execute` tool, so use process-wide write protection for read-only setups:
+**v2 is read-only by default.** `POST`, `PUT`, `PATCH`, and `DELETE` requests are blocked unless you explicitly opt in:
+
+```json
+{
+  "LEXWARE_OFFICE_ALLOW_WRITES": "true"
+}
+```
+
+`LEXWARE_OFFICE_READ_ONLY=true` is a hard block that wins over `ALLOW_WRITES=true`:
 
 ```json
 {
   "LEXWARE_OFFICE_READ_ONLY": "true"
-}
-```
-
-Alternatively:
-
-```json
-{
-  "LEXWARE_OFFICE_ALLOW_WRITES": "false"
 }
 ```
 

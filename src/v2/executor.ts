@@ -374,14 +374,27 @@ export class QuickJsExecutor implements CodeExecutor {
 			}
 
 			// If the sandbox native promise is still pending (i.e. we timed out while
-			// the sandbox was awaiting a host call), drain it now that we've settled the
-			// deferreds. This lets QuickJS process its continuation callbacks before we
-			// free the runtime, avoiding another source of gc_obj_list assertion failures.
+			// the sandbox was awaiting a host call, or the guest has a never-settling
+			// promise), drain it now that we've settled the deferreds.  This lets
+			// QuickJS process its continuation callbacks before we free the runtime,
+			// avoiding gc_obj_list assertion failures.
+			//
+			// IMPORTANT: use a hard cap so that a never-settling guest promise (e.g.
+			//   async () => await new Promise(() => {})
+			// does not block teardown indefinitely.  The cap is generous enough for
+			// the continuation microtasks to flush but short enough to be invisible
+			// to callers.
 			if (sandboxNativePromise !== undefined) {
-				const results = await Promise.allSettled([sandboxNativePromise]);
+				const TEARDOWN_CAP_MS = 500;
+				const teardownTimeout = new Promise<'timeout'>((resolve) =>
+					setTimeout(() => resolve('timeout'), TEARDOWN_CAP_MS),
+				);
+				const results = await Promise.allSettled([
+					Promise.race([sandboxNativePromise, teardownTimeout]),
+				]);
 				// Dispose any QuickJS handles returned by the resolved native promise.
 				for (const r of results) {
-					if (r.status === 'fulfilled') {
+					if (r.status === 'fulfilled' && r.value !== 'timeout') {
 						const val = r.value as { error?: { dispose(): void }; value?: { dispose(): void } } | undefined;
 						try { val?.error?.dispose(); } catch { /* ignore */ }
 						try { val?.value?.dispose(); } catch { /* ignore */ }
