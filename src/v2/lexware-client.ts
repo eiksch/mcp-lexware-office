@@ -81,7 +81,7 @@ interface NormalizedRequest {
 }
 
 const DEFAULT_BASE_URL = 'https://api.lexware.io';
-const DEFAULT_USER_AGENT = 'mcp-lexware-office-v2/0.1.0';
+const DEFAULT_USER_AGENT = 'mcp-lexware-office-v2/1.5.0';
 const DEFAULT_MAX_RESPONSE_CHARS = 24_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_RATE_LIMIT_INTERVAL_MS = 500;

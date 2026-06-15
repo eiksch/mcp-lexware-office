@@ -430,7 +430,7 @@ The following table documents the legacy v1 tools. v2 users should use `search` 
 
 | Tool | Description | API |
 |---|---|---|
-| `get-invoices` | List invoices with optional filters | `GET /v1/invoices` |
+| `get-invoices` | List invoice summaries with optional status filters | `GET /v1/voucherlist?voucherType=invoice` |
 | `get-invoice-details` | Get details of a specific invoice | `GET /v1/invoices/{id}` |
 | `create-invoice` | Create an invoice as a draft | `POST /v1/invoices` |
 | `finalize-invoice` | Create and immediately finalize an invoice | `POST /v1/invoices?finalize=true` |
@@ -439,7 +439,7 @@ The following table documents the legacy v1 tools. v2 users should use `search` 
 
 | Tool | Description | API |
 |---|---|---|
-| `get-quotations` | List quotations with optional filters | `GET /v1/quotations` |
+| `get-quotations` | List quotation summaries with optional status filters | `GET /v1/voucherlist?voucherType=quotation` |
 | `get-quotation-details` | Get details of a specific quotation | `GET /v1/quotations/{id}` |
 | `create-quotation` | Create a quotation as a draft | `POST /v1/quotations` |
 | `finalize-quotation` | Create and immediately finalize a quotation | `POST /v1/quotations?finalize=true` |
@@ -448,7 +448,7 @@ The following table documents the legacy v1 tools. v2 users should use `search` 
 
 | Tool | Description | API |
 |---|---|---|
-| `get-order-confirmations` | List order confirmations with optional filters | `GET /v1/order-confirmations` |
+| `get-order-confirmations` | List order-confirmation summaries with optional status filters | `GET /v1/voucherlist?voucherType=orderconfirmation` |
 | `get-order-confirmation-details` | Get details of a specific order confirmation | `GET /v1/order-confirmations/{id}` |
 | `create-order-confirmation` | Create an order confirmation as a draft | `POST /v1/order-confirmations` |
 | `finalize-order-confirmation` | Create and immediately finalize an order confirmation | `POST /v1/order-confirmations?finalize=true` |
@@ -457,7 +457,7 @@ The following table documents the legacy v1 tools. v2 users should use `search` 
 
 | Tool | Description | API |
 |---|---|---|
-| `get-credit-notes` | List credit notes with optional filters | `GET /v1/credit-notes` |
+| `get-credit-notes` | List credit-note summaries with optional status filters | `GET /v1/voucherlist?voucherType=creditnote` |
 | `get-credit-note-details` | Get details of a specific credit note | `GET /v1/credit-notes/{id}` |
 | `create-credit-note` | Create a credit note as a draft | `POST /v1/credit-notes` |
 | `finalize-credit-note` | Create and immediately finalize a credit note | `POST /v1/credit-notes?finalize=true` |
@@ -466,7 +466,7 @@ The following table documents the legacy v1 tools. v2 users should use `search` 
 
 | Tool | Description | API |
 |---|---|---|
-| `get-delivery-notes` | List delivery notes with optional filters | `GET /v1/delivery-notes` |
+| `get-delivery-notes` | List delivery-note summaries with optional status filters | `GET /v1/voucherlist?voucherType=deliverynote` |
 | `get-delivery-note-details` | Get details of a specific delivery note | `GET /v1/delivery-notes/{id}` |
 | `create-delivery-note` | Create a delivery note as a draft | `POST /v1/delivery-notes` |
 | `finalize-delivery-note` | Create and immediately finalize a delivery note | `POST /v1/delivery-notes?finalize=true` |

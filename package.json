@@ -20,7 +20,8 @@
 		"lexware-office-v2": "./build/v2/index.js"
 	},
 	"files": [
-		"build"
+		"build",
+		"docs"
 	],
 	"scripts": {
 		"build": "shx rm -rf build && tsc && shx chmod +x build/*.js build/v2/*.js",
