@@ -895,10 +895,17 @@ const lineItemSchema = z.discriminatedUnion('type', [
 
 const invoiceAddressSchema = z.union([
 	z.object({
-		contactId: z.string().uuid().describe('Reference to an existing contact'),
+		contactId: z.string().uuid().describe('Reference to an existing contact. To use a deviated address for this document only, additionally set ALL required address fields (name, street, zip, city, countryCode) — the API replaces the whole address, it does not merge single fields. The contact\'s stored data is not modified.'),
+		name: z.string().optional(),
+		supplement: z.string().optional().describe('Address supplement (Adresszusatz)'),
+		street: z.string().optional(),
+		zip: z.string().optional(),
+		city: z.string().optional(),
+		countryCode: z.string().length(2).optional().describe('ISO 3166-1 alpha-2, e.g. "DE"'),
 	}),
 	z.object({
 		name: z.string(),
+		supplement: z.string().optional().describe('Address supplement (Adresszusatz)'),
 		street: z.string().optional(),
 		zip: z.string().optional(),
 		city: z.string().optional(),
@@ -935,6 +942,8 @@ const invoiceSchema = {
 		.optional(),
 	introduction: z.string().optional().describe('Introductory text before line items'),
 	remark: z.string().optional().describe('Closing text after line items'),
+	language: z.enum(['de', 'en']).optional().describe('Document language — affects print labels and default text modules. Default: "de"'),
+	title: z.string().optional().describe('Custom document title on the printed document. Organization default if omitted'),
 };
 
 registerSalesDocumentTools({
@@ -966,6 +975,8 @@ const dunningSchema = {
 	}).describe('Required by Lexoffice API'),
 	introduction: z.string().optional(),
 	remark: z.string().optional(),
+	language: z.enum(['de', 'en']).optional().describe('Document language — affects print labels and default text modules. Default: "de"'),
+	title: z.string().optional().describe('Custom document title on the printed document. Organization default if omitted'),
 };
 
 registerSalesDocumentTools({
@@ -1395,6 +1406,8 @@ const deliveryNoteSchema = {
 	}).describe('Shipping/delivery conditions — required by Lexoffice API'),
 	introduction: z.string().optional().describe('Introductory text before line items'),
 	remark: z.string().optional().describe('Closing text after line items'),
+	language: z.enum(['de', 'en']).optional().describe('Document language — affects print labels and default text modules. Default: "de"'),
+	title: z.string().optional().describe('Custom document title on the printed document. Organization default if omitted'),
 };
 
 registerSalesDocumentTools({
