@@ -914,6 +914,25 @@ export const lexwareSpec: LexwareApiCatalog = {
 				{ method: 'GET', path: '/v1/contacts/{id}' },
 			],
 		},
+		duplicateVoucher: {
+			summary: 'Duplicate a bookkeeping voucher (Beleg duplizieren) — copy fields to a new voucher',
+			keywords: ['duplicate', 'copy voucher', 'duplicate voucher', 'Beleg duplizieren', 'Beleg kopieren', 'clone voucher'],
+			steps: [
+				'Fetch the source voucher with GET /v1/vouchers/{id}.',
+				'Build the new POST body from source fields: type, taxType, voucherItems, totalGrossAmount, totalTaxAmount, voucherDate (override if the user provides one), dueDate, contactId, remark. Strip id, version, createdDate, updatedDate, and files[] — do not include them.',
+				'POST /v1/vouchers with the assembled body and desired voucherStatus (open or unchecked; default to open).',
+			],
+			relatedEndpoints: [
+				{ method: 'GET', path: '/v1/vouchers/{id}' },
+				{ method: 'POST', path: '/v1/vouchers' },
+			],
+			notes: [
+				'totalGrossAmount and totalTaxAmount must be included in the POST body even though they are derived; the API rejects requests without them.',
+				'contactId and remark may be absent in the source — omit from the POST body rather than sending null.',
+				'Omit voucherNumber to let Lexware auto-assign it (recommended for salesinvoice and salescreditnote sequential numbering).',
+				'File attachments (source.files[]) cannot be copied here: binary response bodies are dropped by the sandbox (GET /v1/files/{id} returns metadata only). Tell the user to re-attach files manually in the Lexware Office UI.',
+			],
+		},
 	},
 };
 
