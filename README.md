@@ -195,6 +195,44 @@ v1 safety is usually managed by disabling specific write/finalize/upload tools i
 
 See [docs/version-guide.md#permission-models](docs/version-guide.md#permission-models) for the detailed permission model.
 
+### Remote access: HTTP transport with GitHub OAuth (v2 only)
+
+By default both entrypoints speak MCP over stdio (one local process per client). The v2 server
+(`lexware-office-v2`) can instead be run as an HTTP server, protected by an OAuth flow backed by
+GitHub as the identity provider, so it can be reached remotely instead of spawned as a local
+subprocess.
+
+Set `MCP_TRANSPORT=http` to switch the same binary into HTTP mode:
+
+```bash
+MCP_TRANSPORT=http \
+MCP_PUBLIC_URL=https://mcp.example.com \
+GITHUB_CLIENT_ID=... \
+GITHUB_CLIENT_SECRET=... \
+node build/v2/index.js
+```
+
+Setup:
+
+1. Create a GitHub OAuth App at [github.com/settings/developers](https://github.com/settings/developers).
+   Set its **Authorization callback URL** to `<MCP_PUBLIC_URL>/callback/github`.
+2. Set `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` from that app.
+3. Point `MCP_PUBLIC_URL` at the externally reachable base URL of this server (must be `https://` in
+   production; `http://localhost:<port>` is allowed for local testing).
+4. Optionally restrict access to specific GitHub accounts with `GITHUB_ALLOWED_LOGINS` (comma-separated
+   usernames) — otherwise any GitHub account can complete the login.
+
+An MCP client connecting to `<MCP_PUBLIC_URL>/mcp` is redirected through GitHub's login page, then back
+to this server, which mints its own opaque access token for the session. All OAuth state — dynamically
+registered clients, pending logins, authorization codes, and issued access tokens — lives **only in
+process memory**: nothing is persisted, tokens don't survive a restart, and none of it is shared across
+multiple instances/replicas. Access tokens expire after 1 hour and are not refreshable; the client
+re-authorizes via GitHub when that happens.
+
+Relevant env vars (see `.env.example`): `MCP_TRANSPORT`, `MCP_HTTP_HOST`, `MCP_HTTP_PORT`,
+`MCP_PUBLIC_URL`, `MCP_HTTP_ALLOWED_HOSTS`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`,
+`GITHUB_OAUTH_SCOPE`, `GITHUB_ALLOWED_LOGINS`.
+
 ## Docker
 
 Build the image:

@@ -36,8 +36,8 @@ const clientWithCalls = (handler: (input: RequestInfo | URL, init?: RequestInit)
 };
 
 test('v2 registers exactly search and execute tools', async () => {
-	const source = await readFile('src/v2/index.ts', 'utf8');
-	const tools = [...source.matchAll(/server\.tool\(\n\t'([^']+)'/g)].map((match) => match[1]);
+	const source = await readFile('src/v2/server-factory.ts', 'utf8');
+	const tools = [...source.matchAll(/server\.tool\(\r?\n\t\t'([^']+)'/g)].map((match) => match[1]);
 
 	assert.deepEqual(tools, ['search', 'execute']);
 	assert.doesNotMatch(source, /get-revenue-summary|allowWrite/);
@@ -467,8 +467,8 @@ test('writesEnabled reflects the env gate and is injected into the sandbox spec'
 		else process.env.LEXWARE_OFFICE_ALLOW_WRITES = originalAllowWrites;
 	}
 
-	const source = await readFile('src/v2/index.ts', 'utf8');
-	assert.match(source, /writesEnabled: writesEnabled\(\)/, 'index.ts must inject writesEnabled into the sandbox spec');
+	const source = await readFile('src/v2/server-factory.ts', 'utf8');
+	assert.match(source, /writesEnabled: writesEnabled\(\)/, 'server-factory.ts must inject writesEnabled into the sandbox spec');
 	assert.match(source, /spec\.info\.writesEnabled/, 'tool docs must mention spec.info.writesEnabled');
 	assert.match(source, /contentPath/, 'execute tool docs must document contentPath uploads');
 	assert.match(source, /multipart\?: MultipartPart\[\]/, 'execute tool docs must document the multipart request field');
